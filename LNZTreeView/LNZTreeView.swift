@@ -516,6 +516,7 @@ extension LNZTreeView: UITableViewDelegate {
             CATransaction.setCompletionBlock {[weak self] in
                 guard let strongSelf = self else { return }
                 strongSelf.delegate?.treeView?(strongSelf, didCollapseNodeAt: indexInParent, forParentNode: node.parent)
+                strongSelf.tableView.selectRow(at: indexPath, animated: false, scrollPosition: UITableView.ScrollPosition.none)
             }
         } else {
             let range = expandNode(node, at: indexPath, in: &nodes)
@@ -529,6 +530,7 @@ extension LNZTreeView: UITableViewDelegate {
             CATransaction.setCompletionBlock {[weak self] in
                 guard let strongSelf = self else { return }
                 strongSelf.delegate?.treeView?(strongSelf, didExpandNodeAt: indexInParent, forParentNode: node.parent)
+                strongSelf.tableView.selectRow(at: indexPath, animated: false, scrollPosition: UITableView.ScrollPosition.none)
             }
         }
     }
