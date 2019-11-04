@@ -47,6 +47,11 @@ public class LNZTreeView: UIView {
         get { return tableView.allowsSelectionDuringEditing }
         set { tableView.allowsSelectionDuringEditing = newValue }
     }
+
+    @IBInspectable public var separatorStyle: UITableViewCell.SeparatorStyle {
+            get { return tableView.separatorStyle }
+            set { tableView.separatorStyle = newValue }
+    }
     
     public func setEditing(_ editing: Bool, animated: Bool) {
         tableView.setEditing(editing, animated: animated)
