@@ -194,22 +194,26 @@ public class LNZTreeView: UIView {
     }
     
     /**
-     Programmatically select a node. If the node is expandable, the expand toggle will be triggered, which means
-     that if it is expanded it will be collapsed, viceversa if it is collapsed it will be expanded.
+     Programmatically select a node. If the node is expandable, and unless doNotExpand is true,
+     the expand toggle will be triggered, which means that if it is expanded it will be collapsed,
+     viceversa if it is collapsed it will be expanded.
      - parameter node: The node to be selected.
      - parameter section: The section index where the node is.
      - parameter animated: An animation will occur on select.
      - parameter scrollPosition: the scroll position for the selected node.
+     - parameter doNotExpand: node will not be expanded / collapsed.
      - returns: true if the node was successfully selected. False otherwise.
      */
     @discardableResult
-    public func select(node: TreeNodeProtocol, inSection section: Int, animated: Bool = false, scrollPosition: UITableView.ScrollPosition = .none) -> Bool {
+    public func select(node: TreeNodeProtocol, inSection section: Int, animated: Bool = false, scrollPosition: UITableView.ScrollPosition = .none, doNotExpand: Bool = false) -> Bool {
         guard let indexPath = indexPathForNode(node, inSection: section) else { return false }
         tableView.selectRow(at: indexPath, animated: animated, scrollPosition: scrollPosition)
-        tableView(tableView, didSelectRowAt: indexPath)
+        if (!doNotExpand) {
+           tableView(tableView, didSelectRowAt: indexPath)
+        }
         return true
     }
-    
+
     /**
      Retrieve the index path for a given node in a given section.
      */
