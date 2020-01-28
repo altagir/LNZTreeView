@@ -22,17 +22,16 @@ public class LNZTreeView: UIView {
         var isExpandable: Bool = false
         var isExpanded: Bool = false
         
-        
         var parent: TreeNodeProtocol?
         
         init(identifier: String) {
             self.identifier = identifier
         }
     }
-    
 
         
     @IBInspectable public var indentationWidth: CGFloat = 10
+    @IBInspectable public var isExpandOnSelect: Bool = true
     @IBInspectable public var isEditing: Bool {
         get { return tableView.isEditing }
         set { tableView.isEditing = newValue }
@@ -130,6 +129,13 @@ public class LNZTreeView: UIView {
     }
     
     /**
+	 Tree hierarchy will be saved and the dataSource will be reloaded.
+	 */
+    public func reloadTree() {
+ 	    tableView.reloadData()
+    }
+    
+    /**
      This method returns the number of sections for the current load in dataSource.
      - returns: The number of sections.
      */
@@ -166,7 +172,7 @@ public class LNZTreeView: UIView {
         
         let minimalNode = nodes[indexPath.row]
         guard minimalNode.isExpanded != toggle else { return true }
-        tableView(tableView, didSelectRowAt: indexPath)
+        self.toggle(indexPath: indexPath)
         return minimalNode.isExpanded == toggle
     }
     
@@ -192,7 +198,18 @@ public class LNZTreeView: UIView {
     public func collapse(node: TreeNodeProtocol, inSection section: Int) -> Bool {
         return toggleExpanded(false, node: node, inSection: section)
     }
-    
+
+	public func toggle(node: TreeNodeProtocol, inSection section: Int) -> Bool {
+	   guard node.isExpandable,
+		   let nodes = nodesForSection[section],
+		   let indexPath = indexPathForNode(node, inSection: section) else {
+			   return false
+	   }
+
+	   let minimalNode = nodes[indexPath.row]
+	   return toggleExpanded(!minimalNode.isExpanded, node: node, inSection: section)
+   }
+
     /**
      Programmatically select a node. If the node is expandable, and unless doNotExpand is true,
      the expand toggle will be triggered, which means that if it is expanded it will be collapsed,
@@ -205,19 +222,31 @@ public class LNZTreeView: UIView {
      - returns: true if the node was successfully selected. False otherwise.
      */
     @discardableResult
-    public func select(node: TreeNodeProtocol, inSection section: Int, animated: Bool = false, scrollPosition: UITableView.ScrollPosition = .none, doNotExpand: Bool = false) -> Bool {
-        guard let indexPath = indexPathForNode(node, inSection: section) else { return false }
-        tableView.selectRow(at: indexPath, animated: animated, scrollPosition: scrollPosition)
-        if (!doNotExpand) {
-           tableView(tableView, didSelectRowAt: indexPath)
-        }
-        return true
+    public func select(node: TreeNodeProtocol, inSection section: Int, animated: Bool = false, scrollPosition: UITableView.ScrollPosition = .none) -> Bool {
+		guard node.isExpandable,
+			  let nodes = nodesForSection[section],
+			  let indexPath = indexPathForNode(node, inSection: section) else {
+				return false
+		}
+
+		let minimalNode = nodes[indexPath.row]
+        return toggleExpanded(!minimalNode.isExpanded, node: node, inSection: section)
     }
+
+	public func selectRow(at indexPath: IndexPath, animated: Bool, scrollPosition: UITableView.ScrollPosition)
+	{
+		self.tableView.selectRow(at: indexPath, animated: animated, scrollPosition: scrollPosition)
+	}
+
+	public func deselectRow(at indexPath: IndexPath, animated: Bool)
+	{
+		self.tableView.deselectRow(at: indexPath, animated: animated)
+	}
 
     /**
      Retrieve the index path for a given node in a given section.
      */
-    private func indexPathForNode(_ node: TreeNodeProtocol, inSection section: Int) -> IndexPath? {
+    public func indexPathForNode(_ node: TreeNodeProtocol, inSection section: Int) -> IndexPath? {
         return indexPathForNode(withIdentifier: node.identifier, inSection: section)
     }
     
@@ -403,6 +432,55 @@ public class LNZTreeView: UIView {
         
         return realIndexPath
     }
+
+	public func toggle(indexPath: IndexPath) {
+		  guard var nodes = nodesForSection[indexPath.section],
+			  let indexInParent = self.indexInParent(forNodeAt: indexPath) else {
+				  fatalError("Something wrong here")
+		  }
+		  let node = nodes[indexPath.row]
+
+		  guard node.isExpandable else {
+			  return
+		  }
+
+		  CATransaction.begin()
+		  tableView.beginUpdates()
+		  defer {
+			  CATransaction.commit()
+			  tableView.endUpdates()
+		  }
+
+		  tableView.reloadRows(at: [indexPath], with: .fade)
+
+		  if node.isExpanded {
+			  let range = closeNode(node, atIndex: indexPath.row, in: &nodes)
+			  nodesForSection[indexPath.section] = nodes
+
+			  if let deleteRange = range {
+				  //Updating the tableView
+				  let indexPaths = Array(deleteRange).map { IndexPath(row: $0, section: indexPath.section) }
+				  tableView.deleteRows(at: indexPaths, with: tableViewRowAnimation)
+			  }
+			  CATransaction.setCompletionBlock {[weak self] in
+				  guard let strongSelf = self else { return }
+				  strongSelf.delegate?.treeView?(strongSelf, didCollapseNodeAt: indexInParent, forParentNode: node.parent)
+			  }
+		  } else {
+			  let range = expandNode(node, at: indexPath, in: &nodes)
+			  nodesForSection[indexPath.section] = nodes
+
+			  if let insertRange = range {
+				  //Updating the tableView
+				  let indexPaths = Array(insertRange).map { IndexPath(row: $0, section: indexPath.section) }
+				  tableView.insertRows(at: indexPaths, with: tableViewRowAnimation)
+			  }
+			  CATransaction.setCompletionBlock {[weak self] in
+				  guard let strongSelf = self else { return }
+				  strongSelf.delegate?.treeView?(strongSelf, didExpandNodeAt: indexInParent, forParentNode: node.parent)
+			  }
+		  }
+	  }
 }
 
 //MARK: - UITableViewDataSource
@@ -499,49 +577,10 @@ extension LNZTreeView: UITableViewDelegate {
             fatalError("Something wrong here")
         }
         let node = nodes[indexPath.row]
-        
-        guard node.isExpandable else {
-            delegate?.treeView?(self, didSelectNodeAt: indexInParent, forParentNode: node.parent)
-            return
-        }
-        CATransaction.begin()
-        tableView.beginUpdates()
-        defer {
-            CATransaction.commit()
-            tableView.endUpdates()
-        }
-        
-        tableView.reloadRows(at: [indexPath], with: .fade)
-        
-        if node.isExpanded {
-            let range = closeNode(node, atIndex: indexPath.row, in: &nodes)
-            nodesForSection[indexPath.section] = nodes
-            
-            if let deleteRange = range {
-                //Updating the tableView
-                let indexPaths = Array(deleteRange).map { IndexPath(row: $0, section: indexPath.section) }
-                tableView.deleteRows(at: indexPaths, with: tableViewRowAnimation)
-            }
-            CATransaction.setCompletionBlock {[weak self] in
-                guard let strongSelf = self else { return }
-                strongSelf.delegate?.treeView?(strongSelf, didCollapseNodeAt: indexInParent, forParentNode: node.parent)
-                strongSelf.tableView.selectRow(at: indexPath, animated: false, scrollPosition: UITableView.ScrollPosition.none)
-            }
-        } else {
-            let range = expandNode(node, at: indexPath, in: &nodes)
-            nodesForSection[indexPath.section] = nodes
-            
-            if let insertRange = range {
-                //Updating the tableView
-                let indexPaths = Array(insertRange).map { IndexPath(row: $0, section: indexPath.section) }
-                tableView.insertRows(at: indexPaths, with: tableViewRowAnimation)
-            }
-            CATransaction.setCompletionBlock {[weak self] in
-                guard let strongSelf = self else { return }
-                strongSelf.delegate?.treeView?(strongSelf, didExpandNodeAt: indexInParent, forParentNode: node.parent)
-                strongSelf.tableView.selectRow(at: indexPath, animated: false, scrollPosition: UITableView.ScrollPosition.none)
-            }
-        }
+		if isExpandOnSelect  {
+			toggle(indexPath: indexPath)
+		}
+		delegate?.treeView?(self, didSelectNodeAt: indexInParent, forParentNode: node.parent)
     }
     
     private func expandNode(_ node: MinimalTreeNode, at indexPath: IndexPath, in nodes: inout [MinimalTreeNode]) -> CountableClosedRange<Int>? {
